@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "memoku-alarm",
+      name: "service-utils",
       exec_mode: "fork",
       instances: "1",
       script: "./dist/src/main.js",
