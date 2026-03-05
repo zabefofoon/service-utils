@@ -1,6 +1,6 @@
 # service-utils
 
-NestJS utility service.
+NestJS utility service using Fastify + Drizzle ORM.
 
 ## Setup
 
@@ -8,27 +8,26 @@ NestJS utility service.
 pnpm install
 ```
 
-## PostgreSQL (Neon) connection
+## Environment
 
-1. Create `.env` from `.env.example`.
-2. Set `DATABASE_URL`.
-3. Start the server.
+Create `.env` and set:
+
+```env
+DATABASE_URL="postgresql://neondb_owner:test@ep-shy-cell-a1woj4gv-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+PORT=3001
+```
+
+## Run
 
 ```bash
 pnpm run start:dev
 ```
 
-Database health check endpoint:
+## Endpoints
 
-```bash
-GET /db/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "message": "PostgreSQL connection is healthy"
-}
-```
+- `GET /db/health`
+- `POST /boards`
+- `GET /boards`
+- `GET /boards/:id`
+- `PATCH /boards/:id`
+- `DELETE /boards/:id`
