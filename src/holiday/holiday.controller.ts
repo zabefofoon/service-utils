@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from "@nestjs/common"
+import { Controller, Get, Query } from "@nestjs/common"
 import { HolidayService } from "./holiday.service"
 
 @Controller("holiday")
@@ -6,12 +6,7 @@ export class HolidayController {
   constructor(private readonly holidayService: HolidayService) {}
 
   @Get()
-  async findAll() {
-    return this.holidayService.findAll()
-  }
-
-  @Get(":id")
-  async findOne(@Param("id") id: string) {
-    return this.holidayService.findOne(id)
+  async findAll(@Query("year") year?: string, @Query("country") country?: string) {
+    return this.holidayService.findAll({ year, country })
   }
 }

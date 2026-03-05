@@ -26,8 +26,10 @@
     "@nestjs/platform-fastify": "^11.1.15",
     "@nestjs/schedule": "^6.1.1",
     "@types/pg": "^8.18.0",
+    "dayjs": "^1.11.19",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
+    "googleapis": "^171.4.0",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
