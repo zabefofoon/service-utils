@@ -86,6 +86,7 @@ export class HolidayService {
 
     if (year && country) {
       const res = await this.findAll({ year, country })
+
       const insertRes = await this.postgresService
         .getDb()
         .insert(holidays)
