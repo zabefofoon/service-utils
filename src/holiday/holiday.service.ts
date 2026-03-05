@@ -82,6 +82,8 @@ export class HolidayService {
   }
 
   async saveHolidayFromGoogle(year: number, country?: string) {
+    if (!year) throw new BadRequestException("need year")
+
     if (year && country) {
       const res = await this.findAll({ year, country })
 
@@ -127,6 +129,23 @@ export class HolidayService {
         message: "success",
         statusCode: HttpStatus.OK,
       })
+    }
+  }
+
+  async deleteHoliday(year: number) {
+    if (!year) throw new BadRequestException("need year")
+
+    if (year < 1900 || year > 2100)
+      throw new BadRequestException("year must be an integer between 1900 and 2100")
+    try {
+      await this.postgresService.getDb().delete(holidays).where(eq(holidays.year, year))
+      return CommonResponse.of({
+        data: undefined,
+        message: "success",
+        statusCode: HttpStatus.OK,
+      })
+    } catch {
+      throw new InternalServerErrorException("fail delete")
     }
   }
 

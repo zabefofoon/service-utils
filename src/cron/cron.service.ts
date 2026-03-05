@@ -7,7 +7,19 @@ import { HolidayService } from "../holiday/holiday.service"
 export class CronService {
   constructor(private readonly holidayService: HolidayService) {}
   @Cron("0 0 1 * *") // 매월 1일 00:00
-  handleEveryMinute() {
+  handleEvery1DayMonth() {
     this.holidayService.saveHolidayFromGoogle(dayjs().get("year")).catch(console.error)
+  }
+
+  @Cron("0 0 2 * *")
+  handleEvery2DayMonth() {
+    this.holidayService
+      .saveHolidayFromGoogle(dayjs().add(1, "year").get("year"))
+      .catch(console.error)
+  }
+
+  @Cron("0 0 3 */6 *")
+  handleEvery3Day6Month() {
+    this.holidayService.deleteHoliday(dayjs().subtract(1, "year").get("year")).catch(console.error)
   }
 }
