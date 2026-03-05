@@ -49,6 +49,17 @@ export class PostgresService implements OnModuleInit, OnModuleDestroy {
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `)
+
+    await this.db.execute(sql`
+      CREATE TABLE IF NOT EXISTS holiday (
+        id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        year integer NOT NULL,
+        country text NOT NULL,
+        holidays jsonb NOT NULL DEFAULT '[]'::jsonb,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (year, country)
+      )
+    `)
   }
 
   async onModuleDestroy(): Promise<void> {

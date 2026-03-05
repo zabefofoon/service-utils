@@ -8,9 +8,12 @@ import {
 } from "@nestjs/common"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
+import { and, eq } from "drizzle-orm"
 import { calendar_v3, google } from "googleapis"
 import { CommonResponse } from "../common/models/CommonResponse"
 import { ISO_TO_GCAL, ISO_TO_LANG } from "../const"
+import { PostgresService } from "../database/postgres.service"
+import { holidays } from "../database/schema"
 
 dayjs.extend(utc)
 
@@ -27,6 +30,7 @@ interface GoogleApiLikeError {
 
 @Injectable()
 export class HolidayService {
+  constructor(private readonly postgresService: PostgresService) {}
   private getCalendarClient(): calendar_v3.Calendar {
     const apiKey = process.env.GOOGLE_API_KEY
 
@@ -35,10 +39,7 @@ export class HolidayService {
     return google.calendar({ version: "v3", auth: apiKey })
   }
 
-  async findAll(query: {
-    country?: string
-    year?: string
-  }): Promise<CommonResponse<HolidayItem[]>> {
+  async findAll(query: { year: number; country?: string }): Promise<CommonResponse<HolidayItem[]>> {
     const calendarId = `${ISO_TO_LANG[query.country || "ko"]}.${ISO_TO_GCAL[query.country || "kr"]}.official#holiday@group.v.calendar.google.com`
 
     const year = this.parseYear(query.year)
@@ -57,10 +58,8 @@ export class HolidayService {
         maxResults: 2500,
       })
 
-      const items = (response.data.items ?? []).map((event) => this.toHolidayItem(event))
-
       return CommonResponse.of({
-        data: items,
+        data: (response.data.items ?? []).map((event) => this.toHolidayItem(event)),
         message: "success",
         statusCode: HttpStatus.OK,
       })
@@ -69,16 +68,74 @@ export class HolidayService {
     }
   }
 
-  getHolidayFromGoogle() {
-    console.log(`[cron] HolidayService ${new Date().toISOString()} every-minute job`)
+  async find(year: number, country: string) {
+    const holiday = await this.postgresService
+      .getDb()
+      .select()
+      .from(holidays)
+      .where(and(eq(holidays.year, year), eq(holidays.country, country)))
+
+    return CommonResponse.of({
+      data: holiday,
+      statusCode: HttpStatus.OK,
+    })
   }
 
-  private parseYear(input?: string): number {
+  async saveHolidayFromGoogle(year: number, country?: string) {
+    if (year && country) {
+      const res = await this.findAll({ year, country })
+
+      const insertRes = await this.postgresService
+        .getDb()
+        .insert(holidays)
+        .values({
+          year: Number(year),
+          country,
+          holidays: res.data,
+        })
+        .onConflictDoUpdate({
+          target: [holidays.year, holidays.country],
+          set: {
+            holidays: res.data,
+            updatedAt: new Date(),
+          },
+        })
+        .returning()
+
+      return CommonResponse.of({
+        data: insertRes,
+        message: "success",
+        statusCode: HttpStatus.OK,
+      })
+    } else if (year) {
+      for (const country of Object.keys(ISO_TO_GCAL)) {
+        const res = await this.findAll({ country, year })
+
+        await this.postgresService
+          .getDb()
+          .insert(holidays)
+          .values({ year, country, holidays: res.data })
+          .onConflictDoUpdate({
+            target: [holidays.year, holidays.country],
+            set: { holidays: res.data, updatedAt: new Date() },
+          })
+      }
+
+      console.log(`[cron] HolidayService ${new Date().toISOString()} every-minute job`)
+      return CommonResponse.of({
+        data: [],
+        message: "success",
+        statusCode: HttpStatus.OK,
+      })
+    }
+  }
+
+  private parseYear(input?: number): number {
     if (!input) return dayjs.utc().year()
 
-    const parsedYear = Number(input)
+    const parsedYear = input
 
-    if (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > 2100)
+    if (parsedYear < 1900 || parsedYear > 2100)
       throw new BadRequestException("year must be an integer between 1900 and 2100")
 
     return parsedYear
