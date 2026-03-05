@@ -1,25 +1,21 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
-import { PostgresService } from '../database/postgres.service';
-import { boards } from '../database/schema';
-import { CreateBoardDto } from './dto/create-board.dto';
-import { UpdateBoardDto } from './dto/update-board.dto';
-
+import { BadRequestException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common"
+import { desc, eq } from "drizzle-orm"
+import { CommonResponse } from "../common/models/CommonResponse"
+import { PostgresService } from "../database/postgres.service"
+import { Board, boards } from "../database/schema"
+import { CreateBoardDto } from "./dto/create-board.dto"
+import { UpdateBoardDto } from "./dto/update-board.dto"
 @Injectable()
 export class BoardService {
   constructor(private readonly postgresService: PostgresService) {}
 
-  async create(createBoardDto: CreateBoardDto) {
+  async create(createBoardDto: CreateBoardDto): Promise<CommonResponse<Board>> {
     if (!this.isValidText(createBoardDto.title)) {
-      throw new BadRequestException('title is required');
+      throw new BadRequestException("title is required")
     }
 
     if (!this.isValidText(createBoardDto.content)) {
-      throw new BadRequestException('content is required');
+      throw new BadRequestException("content is required")
     }
 
     const [createdBoard] = await this.postgresService
@@ -29,48 +25,57 @@ export class BoardService {
         title: createBoardDto.title,
         content: createBoardDto.content,
       })
-      .returning();
+      .returning()
 
-    return createdBoard;
+    return CommonResponse.of({
+      data: createdBoard,
+      statusCode: HttpStatus.OK,
+    })
   }
 
-  async findAll() {
-    return this.postgresService
+  async findAll(): Promise<CommonResponse<Board[]>> {
+    const boardList = await this.postgresService
       .getDb()
       .select()
       .from(boards)
-      .orderBy(desc(boards.id));
+      .orderBy(desc(boards.id))
+
+    return CommonResponse.of({
+      data: boardList,
+      statusCode: HttpStatus.OK,
+    })
   }
 
-  async findOne(id: number) {
+  async findOne(id: number): Promise<CommonResponse<Board>> {
     const [board] = await this.postgresService
       .getDb()
       .select()
       .from(boards)
       .where(eq(boards.id, id))
-      .limit(1);
+      .limit(1)
 
-    if (!board) {
-      throw new NotFoundException(`Board ${id} not found`);
-    }
+    if (!board) throw new NotFoundException(`Board ${id} not found`)
 
-    return board;
+    return CommonResponse.of({
+      data: board,
+      statusCode: HttpStatus.OK,
+    })
   }
 
-  async update(id: number, updateBoardDto: UpdateBoardDto) {
-    const hasTitle = updateBoardDto.title !== undefined;
-    const hasContent = updateBoardDto.content !== undefined;
+  async update(id: number, updateBoardDto: UpdateBoardDto): Promise<CommonResponse<Board>> {
+    const hasTitle = updateBoardDto.title !== undefined
+    const hasContent = updateBoardDto.content !== undefined
 
     if (!hasTitle && !hasContent) {
-      throw new BadRequestException('title or content is required');
+      throw new BadRequestException("title or content is required")
     }
 
     if (hasTitle && !this.isValidText(updateBoardDto.title)) {
-      throw new BadRequestException('title must be a non-empty string');
+      throw new BadRequestException("title must be a non-empty string")
     }
 
     if (hasContent && !this.isValidText(updateBoardDto.content)) {
-      throw new BadRequestException('content must be a non-empty string');
+      throw new BadRequestException("content must be a non-empty string")
     }
 
     const [updatedBoard] = await this.postgresService
@@ -82,33 +87,29 @@ export class BoardService {
         updatedAt: new Date(),
       })
       .where(eq(boards.id, id))
-      .returning();
+      .returning()
 
-    if (!updatedBoard) {
-      throw new NotFoundException(`Board ${id} not found`);
-    }
+    if (!updatedBoard) throw new NotFoundException(`Board ${id} not found`)
 
-    return updatedBoard;
+    return CommonResponse.of({
+      data: updatedBoard,
+      statusCode: HttpStatus.OK,
+    })
   }
 
-  async remove(id: number) {
+  async remove(id: number): Promise<CommonResponse<number>> {
     const [deletedBoard] = await this.postgresService
       .getDb()
       .delete(boards)
       .where(eq(boards.id, id))
-      .returning({ id: boards.id });
+      .returning({ id: boards.id })
 
-    if (!deletedBoard) {
-      throw new NotFoundException(`Board ${id} not found`);
-    }
+    if (!deletedBoard) throw new NotFoundException(`Board ${id} not found`)
 
-    return {
-      status: 'ok',
-      id: deletedBoard.id,
-    };
+    return CommonResponse.of({ data: id, statusCode: HttpStatus.OK })
   }
 
   private isValidText(value: unknown): value is string {
-    return typeof value === 'string' && value.trim().length > 0;
+    return typeof value === "string" && value.trim().length > 0
   }
 }

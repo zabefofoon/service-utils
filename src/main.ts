@@ -11,4 +11,4 @@ async function bootstrap() {
     host: "0.0.0.0",
   })
 }
-bootstrap()
+void bootstrap()

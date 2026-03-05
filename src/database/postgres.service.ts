@@ -1,7 +1,15 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common"
+import {
+  HttpStatus,
+  Injectable,
+  InternalServerErrorException,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from "@nestjs/common"
 import { sql } from "drizzle-orm"
 import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres"
 import { Pool } from "pg"
+import { CommonResponse } from "../common/models/CommonResponse"
 import * as schema from "./schema"
 
 @Injectable()
@@ -21,6 +29,9 @@ export class PostgresService implements OnModuleInit, OnModuleDestroy {
     this.pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
+      max: 10, // max_connections = 인스턴스 수 x 풀링갯수
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 3000,
     })
 
     this.db = drizzle(this.pool, { schema })
@@ -52,29 +63,18 @@ export class PostgresService implements OnModuleInit, OnModuleDestroy {
     return this.db
   }
 
-  async checkConnection(): Promise<{
-    status: "ok" | "error"
-    message: string
-  }> {
-    if (!this.pool) {
-      return {
-        status: "error",
-        message: "DATABASE_URL is not configured",
-      }
-    }
+  async checkConnection(): Promise<CommonResponse<boolean>> {
+    if (!this.pool) throw new InternalServerErrorException("DATABASE_URL is not configured")
 
     try {
       await this.pool.query("SELECT 1")
 
-      return {
-        status: "ok",
-        message: "PostgreSQL connection is healthy",
-      }
-    } catch (error) {
-      return {
-        status: "error",
-        message: error instanceof Error ? error.message : "Unknown database error",
-      }
+      return CommonResponse.of({
+        data: true,
+        statusCode: HttpStatus.OK,
+      })
+    } catch {
+      throw new ServiceUnavailableException("PostgreSQL connection failed")
     }
   }
 }
