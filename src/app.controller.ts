@@ -1,5 +1,6 @@
-import { Controller, Get } from "@nestjs/common"
-import { ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger"
+import { Controller, Get, Query } from "@nestjs/common"
+
+import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger"
 import { AppService } from "./app.service"
 import { CommonResponse } from "./common/models/CommonResponse"
 
@@ -16,5 +17,26 @@ export class AppController {
   @ApiOkResponse({ description: "서비스 상태 메시지 반환" })
   getHello(): CommonResponse<string> {
     return this.appService.getHello()
+  }
+
+  @Get("/enqueue")
+  @ApiOperation({
+    summary: "큐 테스트(enqueue)",
+    description: "pg-boss enqueue 테스트",
+  })
+  @ApiQuery({ name: "dataText", type: String, description: "데이터", required: false })
+  @ApiOkResponse({ description: "enqueue 성공여부" })
+  async testSomeEnqueue(@Query("dataText") dataText?: string): Promise<CommonResponse<unknown>> {
+    return this.appService.testSomeEnqueue(dataText)
+  }
+
+  @Get("/dequeue")
+  @ApiOperation({
+    summary: "큐 테스트(dequeue)",
+    description: "pg-boss dequeue 테스트",
+  })
+  @ApiOkResponse({ description: "dequeue 성공여부" })
+  async testSomeDequeue(): Promise<CommonResponse<unknown>> {
+    return this.appService.testSomeDequeue()
   }
 }
