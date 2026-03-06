@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm"
-import { integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core"
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core"
 
 export const boards = pgTable("board", {
   id: serial("id").primaryKey(),
@@ -22,6 +31,7 @@ export const holidays = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    syncFailed: boolean("sync_failed").notNull().default(false),
   },
   (t) => [uniqueIndex("holiday_year_country_uq").on(t.year, t.country)]
 )
