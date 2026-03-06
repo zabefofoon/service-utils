@@ -22,7 +22,7 @@ jobs:
           port: ${{ secrets.RASPBERRY_PI_PORT }}
           script: |
             cd /app/service-utils
-            git pull
+            git reset origin/main --hard
             export NVM_DIR=~/.nvm
             source ~/.nvm/nvm.sh 
             npm i -g pnpm
