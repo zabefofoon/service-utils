@@ -4,7 +4,7 @@ module.exports = {
       name: "service-utils",
       exec_mode: "fork",
       instances: "1",
-      script: "./dist/src/main.js",
+      script: "./dist/main.js",
       autorestart: true,
     },
   ],
