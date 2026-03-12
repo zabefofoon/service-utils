@@ -1,23 +1,16 @@
 import { BadRequestException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common"
 import { and, eq, sql } from "drizzle-orm"
 import { CommonResponse } from "../common/models/CommonResponse"
+import zodUtils from "../common/utils/zod.utils"
 import { PostgresService } from "../database/postgres.service"
 import { cities, cityWeather } from "../database/schema"
+import { OpenMeteoClient, OpenMeteoWeatherResponse } from "../infra/open-meteo.client"
 import {
-  OpenMeteoClient,
-  OpenMeteoWeatherResponse,
-} from "../weather/infrastructure/open-meteo.client"
-import cityValidate from "./city.validate"
-
-export interface NearestCity {
-  geonameId: number
-  name: string
-  countryCode: string
-  lat: number
-  lon: number
-  timezone: string | null
-  distanceM: number
-}
+  SCHEMA_CITY_WEATHER_PAYLOAD,
+  SCHEMA_COORDINATE,
+  SHEMA_WEATHER_QUERY,
+} from "./city.validate"
+import { NearestCity } from "./models/NearestCity"
 
 @Injectable()
 export class CityService {
@@ -30,76 +23,85 @@ export class CityService {
     lat?: string
     lon?: string
     geonameId?: string
-  }): Promise<CommonResponse<OpenMeteoWeatherResponse>> {
-    const parsed = cityValidate.parseWeatherQuery(params)
+  }): Promise<CommonResponse<OpenMeteoWeatherResponse> | undefined> {
+    try {
+      const parsed = SHEMA_WEATHER_QUERY.parse(params)
 
-    if (parsed.geonameId !== undefined) {
-      return this.findWeatherFromCacheByGeonameId(parsed.geonameId)
+      if (parsed.geonameId !== undefined) {
+        return this.findWeatherFromCacheByGeonameId(parsed.geonameId)
+      }
+
+      const lat = parsed.lat
+      const lon = parsed.lon
+      if (lat === undefined || lon === undefined)
+        throw new BadRequestException("lat/lon or geoname_id is required")
+
+      const [city] = await this.postgresService
+        .getDb()
+        .select({
+          geonameId: cities.geonameId,
+          lat: cities.lat,
+          lon: cities.lon,
+        })
+        .from(cities)
+        .where(and(eq(cities.lat, lat), eq(cities.lon, lon)))
+        .limit(1)
+
+      if (!city) throw new NotFoundException("City not found for given lat/lon")
+
+      return this.findOrFetchWeatherByCity(city.geonameId, city.lat, city.lon)
+    } catch (error) {
+      zodUtils.throwZodBadRequest(error)
     }
-
-    const lat = parsed.lat
-    const lon = parsed.lon
-    if (lat === undefined || lon === undefined)
-      throw new BadRequestException("lat/lon or geoname_id is required")
-
-    const [city] = await this.postgresService
-      .getDb()
-      .select({
-        geonameId: cities.geonameId,
-        lat: cities.lat,
-        lon: cities.lon,
-      })
-      .from(cities)
-      .where(and(eq(cities.lat, lat), eq(cities.lon, lon)))
-      .limit(1)
-
-    if (!city) throw new NotFoundException("City not found for given lat/lon")
-
-    return this.findOrFetchWeatherByCity(city.geonameId, city.lat, city.lon)
   }
 
-  async findNearest(lat: number, lon: number): Promise<CommonResponse<NearestCity>> {
-    const parsed = cityValidate.parseCoordinates({ lat, lon })
-    const targetPoint = sql`ST_SetSRID(ST_MakePoint(${parsed.lon}, ${parsed.lat}), 4326)::geography`
+  async findNearest(lat: number, lon: number): Promise<CommonResponse<NearestCity> | undefined> {
+    try {
+      const parsed = SCHEMA_COORDINATE.parse({ lat, lon })
+      const targetPoint = sql`ST_SetSRID(ST_MakePoint(${parsed.lon}, ${parsed.lat}), 4326)::geography`
 
-    const [nearestByGeog] = await this.postgresService
-      .getDb()
-      .select({
-        geonameId: cities.geonameId,
-        name: cities.name,
-        countryCode: cities.countryCode,
-        lat: cities.lat,
-        lon: cities.lon,
-        timezone: cities.timezone,
-        distanceM: sql<number>`ST_Distance(${cities.geog}, ${targetPoint})`,
-      })
-      .from(cities)
-      .where(sql`${cities.geog} IS NOT NULL`)
-      .orderBy(sql`${cities.geog} <-> ${targetPoint}`)
-      .limit(1)
+      const [nearestByGeog] = await this.postgresService
+        .getDb()
+        .select({
+          geonameId: cities.geonameId,
+          name: cities.name,
+          countryCode: cities.countryCode,
+          lat: cities.lat,
+          lon: cities.lon,
+          timezone: cities.timezone,
+          distanceM: sql<number>`ST_Distance(${cities.geog}, ${targetPoint})`,
+        })
+        .from(cities)
+        .where(sql`${cities.geog} IS NOT NULL`)
+        .orderBy(sql`${cities.geog} <-> ${targetPoint}`)
+        .limit(1)
 
-    if (nearestByGeog) return CommonResponse.of({ data: nearestByGeog, statusCode: HttpStatus.OK })
+      if (nearestByGeog)
+        return CommonResponse.of({ data: nearestByGeog, statusCode: HttpStatus.OK })
 
-    const [nearestByLatLon] = await this.postgresService
-      .getDb()
-      .select({
-        geonameId: cities.geonameId,
-        name: cities.name,
-        countryCode: cities.countryCode,
-        lat: cities.lat,
-        lon: cities.lon,
-        timezone: cities.timezone,
-        distanceM: sql<number>`ST_Distance(ST_SetSRID(ST_MakePoint(${cities.lon}, ${cities.lat}), 4326)::geography, ${targetPoint})`,
-      })
-      .from(cities)
-      .orderBy(
-        sql`ST_SetSRID(ST_MakePoint(${cities.lon}, ${cities.lat}), 4326)::geography <-> ${targetPoint}`
-      )
-      .limit(1)
+      const [nearestByLatLon] = await this.postgresService
+        .getDb()
+        .select({
+          geonameId: cities.geonameId,
+          name: cities.name,
+          countryCode: cities.countryCode,
+          lat: cities.lat,
+          lon: cities.lon,
+          timezone: cities.timezone,
+          distanceM: sql<number>`ST_Distance(ST_SetSRID(ST_MakePoint(${cities.lon}, ${cities.lat}), 4326)::geography, ${targetPoint})`,
+        })
+        .from(cities)
+        .orderBy(
+          sql`ST_SetSRID(ST_MakePoint(${cities.lon}, ${cities.lat}), 4326)::geography <-> ${targetPoint}`
+        )
+        .limit(1)
 
-    if (!nearestByLatLon) throw new NotFoundException("No city data found")
+      if (!nearestByLatLon) throw new NotFoundException("No city data found")
 
-    return CommonResponse.of({ data: nearestByLatLon, statusCode: HttpStatus.OK })
+      return CommonResponse.of({ data: nearestByLatLon, statusCode: HttpStatus.OK })
+    } catch (error) {
+      zodUtils.throwZodBadRequest(error)
+    }
   }
 
   private async findWeatherFromCacheByGeonameId(
@@ -114,9 +116,11 @@ export class CityService {
       .where(eq(cityWeather.geonameId, geonameId))
       .limit(1)
 
-    if (!cachedWeather || !cityValidate.hasUsableWeatherPayload(cachedWeather.weatherPayload)) {
+    if (
+      !cachedWeather ||
+      !SCHEMA_CITY_WEATHER_PAYLOAD.safeParse(cachedWeather.weatherPayload).success
+    )
       throw new NotFoundException(`No cached weather for geoname_id=${geonameId}`)
-    }
 
     await this.postgresService
       .getDb()
@@ -148,7 +152,10 @@ export class CityService {
       .where(eq(cityWeather.geonameId, geonameId))
       .limit(1)
 
-    if (cachedWeather && cityValidate.hasUsableWeatherPayload(cachedWeather.weatherPayload)) {
+    if (
+      cachedWeather &&
+      SCHEMA_CITY_WEATHER_PAYLOAD.safeParse(cachedWeather.weatherPayload).success
+    ) {
       await this.postgresService
         .getDb()
         .update(cityWeather)
