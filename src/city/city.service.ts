@@ -1,14 +1,13 @@
-import {
-  BadRequestException,
-  HttpStatus,
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
-} from "@nestjs/common"
-import { sql } from "drizzle-orm"
+import { BadRequestException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common"
+import { and, eq, sql } from "drizzle-orm"
 import { CommonResponse } from "../common/models/CommonResponse"
 import { PostgresService } from "../database/postgres.service"
-import { cities } from "../database/schema"
+import { cities, cityWeather } from "../database/schema"
+import {
+  OpenMeteoClient,
+  OpenMeteoWeatherResponse,
+} from "../weather/infrastructure/open-meteo.client"
+import cityValidate from "./city.validate"
 
 export interface NearestCity {
   geonameId: number
@@ -20,88 +19,48 @@ export interface NearestCity {
   distanceM: number
 }
 
-export interface CityWeather {
-  latitude: number
-  longitude: number
-  timezone: string
-  current?: {
-    time?: string
-    temperature_2m?: number
-    rain?: number
-    snowfall?: number
-    showers?: number
-    cloud_cover?: number
-  }
-  hourly?: {
-    time: string[]
-    temperature_2m: number[]
-    rain: number[]
-    snowfall: number[]
-    showers: number[]
-  }
-  current_units?: Record<string, string>
-  hourly_units?: Record<string, string>
-}
-
 @Injectable()
 export class CityService {
-  constructor(private readonly postgresService: PostgresService) {}
+  constructor(
+    private readonly postgresService: PostgresService,
+    private readonly openMeteoClient: OpenMeteoClient
+  ) {}
 
-  async findWeather(
-    lat: number,
-    lon: number,
-    geonameId?: number
-  ): Promise<CommonResponse<CityWeather>> {
-    this.validateCoordinate(lat, lon)
+  async findWeather(params: {
+    lat?: string
+    lon?: string
+    geonameId?: string
+  }): Promise<CommonResponse<OpenMeteoWeatherResponse>> {
+    const parsed = cityValidate.parseWeatherQuery(params)
 
-    if (geonameId) {
-      // geonameId가 온다는건, db에 이미 있다는거라 생각해야함
-      return CommonResponse.of({
-        data: undefined as unknown as CityWeather,
-        statusCode: HttpStatus.OK,
-      })
-    } else {
-      const query = new URLSearchParams({
-        latitude: String(lat),
-        longitude: String(lon),
-        hourly: "temperature_2m,rain,snowfall,showers",
-        current: "temperature_2m,rain,snowfall,showers,cloud_cover",
-        past_hours: "24",
-        forecast_hours: "24",
-        timezone: "Asia/Seoul",
-      })
-
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
-
-      try {
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${query.toString()}`, {
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          throw new ServiceUnavailableException(`weather api failed: ${response.status}`)
-        }
-
-        const weatherData = (await response.json()) as CityWeather
-
-        return CommonResponse.of({
-          data: weatherData,
-          statusCode: HttpStatus.OK,
-        })
-      } catch (error) {
-        if (error instanceof ServiceUnavailableException) throw error
-        throw new ServiceUnavailableException("Failed to fetch weather data")
-      } finally {
-        clearTimeout(timeout)
-      }
+    if (parsed.geonameId !== undefined) {
+      return this.findWeatherFromCacheByGeonameId(parsed.geonameId)
     }
+
+    const lat = parsed.lat
+    const lon = parsed.lon
+    if (lat === undefined || lon === undefined)
+      throw new BadRequestException("lat/lon or geoname_id is required")
+
+    const [city] = await this.postgresService
+      .getDb()
+      .select({
+        geonameId: cities.geonameId,
+        lat: cities.lat,
+        lon: cities.lon,
+      })
+      .from(cities)
+      .where(and(eq(cities.lat, lat), eq(cities.lon, lon)))
+      .limit(1)
+
+    if (!city) throw new NotFoundException("City not found for given lat/lon")
+
+    return this.findOrFetchWeatherByCity(city.geonameId, city.lat, city.lon)
   }
 
   async findNearest(lat: number, lon: number): Promise<CommonResponse<NearestCity>> {
-    this.validateCoordinate(lat, lon)
-
-    const targetPoint = sql`ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326)::geography`
+    const parsed = cityValidate.parseCoordinates({ lat, lon })
+    const targetPoint = sql`ST_SetSRID(ST_MakePoint(${parsed.lon}, ${parsed.lat}), 4326)::geography`
 
     const [nearestByGeog] = await this.postgresService
       .getDb()
@@ -119,12 +78,7 @@ export class CityService {
       .orderBy(sql`${cities.geog} <-> ${targetPoint}`)
       .limit(1)
 
-    if (nearestByGeog) {
-      return CommonResponse.of({
-        data: nearestByGeog,
-        statusCode: HttpStatus.OK,
-      })
-    }
+    if (nearestByGeog) return CommonResponse.of({ data: nearestByGeog, statusCode: HttpStatus.OK })
 
     const [nearestByLatLon] = await this.postgresService
       .getDb()
@@ -145,23 +99,98 @@ export class CityService {
 
     if (!nearestByLatLon) throw new NotFoundException("No city data found")
 
+    return CommonResponse.of({ data: nearestByLatLon, statusCode: HttpStatus.OK })
+  }
+
+  private async findWeatherFromCacheByGeonameId(
+    geonameId: number
+  ): Promise<CommonResponse<OpenMeteoWeatherResponse>> {
+    const [cachedWeather] = await this.postgresService
+      .getDb()
+      .select({
+        weatherPayload: cityWeather.weatherPayload,
+      })
+      .from(cityWeather)
+      .where(eq(cityWeather.geonameId, geonameId))
+      .limit(1)
+
+    if (!cachedWeather || !cityValidate.hasUsableWeatherPayload(cachedWeather.weatherPayload)) {
+      throw new NotFoundException(`No cached weather for geoname_id=${geonameId}`)
+    }
+
+    await this.postgresService
+      .getDb()
+      .update(cityWeather)
+      .set({
+        active: true,
+        lastRequestedAt: new Date(),
+      })
+      .where(eq(cityWeather.geonameId, geonameId))
+
     return CommonResponse.of({
-      data: nearestByLatLon,
+      data: cachedWeather.weatherPayload as OpenMeteoWeatherResponse,
       statusCode: HttpStatus.OK,
     })
   }
 
-  private validateCoordinate(lat: number, lon: number): void {
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      throw new BadRequestException("lat/lon must be valid numbers")
+  private async findOrFetchWeatherByCity(
+    geonameId: number,
+    lat: number,
+    lon: number
+  ): Promise<CommonResponse<OpenMeteoWeatherResponse>> {
+    const now = new Date()
+    const [cachedWeather] = await this.postgresService
+      .getDb()
+      .select({
+        weatherPayload: cityWeather.weatherPayload,
+      })
+      .from(cityWeather)
+      .where(eq(cityWeather.geonameId, geonameId))
+      .limit(1)
+
+    if (cachedWeather && cityValidate.hasUsableWeatherPayload(cachedWeather.weatherPayload)) {
+      await this.postgresService
+        .getDb()
+        .update(cityWeather)
+        .set({
+          active: true,
+          lastRequestedAt: now,
+        })
+        .where(eq(cityWeather.geonameId, geonameId))
+
+      return CommonResponse.of({
+        data: cachedWeather.weatherPayload as OpenMeteoWeatherResponse,
+        statusCode: HttpStatus.OK,
+      })
     }
 
-    if (lat < -90 || lat > 90) {
-      throw new BadRequestException("lat must be between -90 and 90")
-    }
+    const weatherData = await this.openMeteoClient.fetchWeather(lat, lon)
 
-    if (lon < -180 || lon > 180) {
-      throw new BadRequestException("lon must be between -180 and 180")
-    }
+    await this.postgresService
+      .getDb()
+      .insert(cityWeather)
+      .values({
+        geonameId,
+        weatherPayload: weatherData,
+        active: true,
+        lastRequestedAt: now,
+        expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [cityWeather.geonameId],
+        set: {
+          weatherPayload: weatherData,
+          active: true,
+          lastRequestedAt: now,
+          expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          updatedAt: now,
+        },
+      })
+
+    return CommonResponse.of({
+      data: weatherData,
+      statusCode: HttpStatus.OK,
+    })
   }
 }
