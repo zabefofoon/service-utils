@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm"
 import {
+  bigint,
   boolean,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
@@ -37,3 +39,14 @@ export const holidays = pgTable(
 )
 
 export type Holiday = typeof holidays.$inferSelect
+
+export const cities = pgTable("city", {
+  geonameId: bigint("geoname_id", { mode: "number" }).primaryKey(),
+  name: text("name").notNull(),
+  countryCode: text("country_code").notNull(),
+  lat: doublePrecision("lat").notNull(),
+  lon: doublePrecision("lon").notNull(),
+  timezone: text("timezone"),
+})
+
+export type City = typeof cities.$inferSelect
