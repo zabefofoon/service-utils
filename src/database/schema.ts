@@ -4,6 +4,7 @@ import {
   boolean,
   customType,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -47,14 +48,18 @@ export const holidays = pgTable(
 
 export type Holiday = typeof holidays.$inferSelect
 
-export const cities = pgTable("city", {
-  geonameId: bigint("geoname_id", { mode: "number" }).primaryKey(),
-  name: text("name").notNull(),
-  countryCode: text("country_code").notNull(),
-  lat: doublePrecision("lat").notNull(),
-  lon: doublePrecision("lon").notNull(),
-  geog: geographyPoint("geog"),
-  timezone: text("timezone"),
-})
+export const cities = pgTable(
+  "city",
+  {
+    geonameId: bigint("geoname_id", { mode: "number" }).primaryKey(),
+    name: text("name").notNull(),
+    countryCode: text("country_code").notNull(),
+    lat: doublePrecision("lat").notNull(),
+    lon: doublePrecision("lon").notNull(),
+    geog: geographyPoint("geog"),
+    timezone: text("timezone"),
+  },
+  (t) => [index("city_geog_gix").using("gist", t.geog)]
+)
 
 export type City = typeof cities.$inferSelect
