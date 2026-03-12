@@ -33,7 +33,7 @@ export class OpenMeteoClient {
       current: "temperature_2m,rain,snowfall,showers,cloud_cover",
       past_hours: "24",
       forecast_hours: "24",
-      timezone: "Asia/Seoul",
+      timezone: "auto",
     })
 
     const controller = new AbortController()

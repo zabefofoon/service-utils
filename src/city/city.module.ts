@@ -8,5 +8,6 @@ import { CityService } from "./city.service"
   imports: [DatabaseModule],
   controllers: [CityController],
   providers: [CityService, OpenMeteoClient],
+  exports: [CityService],
 })
 export class CityModule {}

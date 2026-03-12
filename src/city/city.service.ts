@@ -1,5 +1,6 @@
 import { BadRequestException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common"
-import { and, eq, sql } from "drizzle-orm"
+import dayjs from "dayjs"
+import { and, eq, isNotNull, lt, sql } from "drizzle-orm"
 import { CommonResponse } from "../common/models/CommonResponse"
 import zodUtils from "../common/utils/zod.utils"
 import { PostgresService } from "../database/postgres.service"
@@ -27,9 +28,8 @@ export class CityService {
     try {
       const parsed = SHEMA_WEATHER_QUERY.parse(params)
 
-      if (parsed.geonameId !== undefined) {
+      if (parsed.geonameId !== undefined)
         return this.findWeatherFromCacheByGeonameId(parsed.geonameId)
-      }
 
       const lat = parsed.lat
       const lon = parsed.lon
@@ -104,6 +104,47 @@ export class CityService {
     }
   }
 
+  async updateCityWeatheres(): Promise<CommonResponse<{ updated: number }>> {
+    const activeCityWeathers = await this.postgresService
+      .getDb()
+      .select({
+        geonameId: cityWeather.geonameId,
+        lat: cities.lat,
+        lon: cities.lon,
+      })
+      .from(cityWeather)
+      .innerJoin(cities, eq(cityWeather.geonameId, cities.geonameId))
+      .where(eq(cityWeather.active, true))
+
+    let updated = 0
+
+    for (const city of activeCityWeathers) {
+      await this.upsertWeatherCache(city.geonameId, city.lat, city.lon, new Date())
+      updated += 1
+    }
+
+    return CommonResponse.of({
+      data: { updated },
+      statusCode: HttpStatus.OK,
+    })
+  }
+
+  async removeUnusedCityWeather(): Promise<CommonResponse<{ deleted: number }>> {
+    const cutoff = dayjs().subtract(14, "day").toDate()
+    const deletedRows = await this.postgresService
+      .getDb()
+      .delete(cityWeather)
+      .where(and(isNotNull(cityWeather.lastRequestedAt), lt(cityWeather.lastRequestedAt, cutoff)))
+      .returning({
+        geonameId: cityWeather.geonameId,
+      })
+
+    return CommonResponse.of({
+      data: { deleted: deletedRows.length },
+      statusCode: HttpStatus.OK,
+    })
+  }
+
   private async findWeatherFromCacheByGeonameId(
     geonameId: number
   ): Promise<CommonResponse<OpenMeteoWeatherResponse>> {
@@ -171,7 +212,22 @@ export class CityService {
       })
     }
 
+    const weatherData = await this.upsertWeatherCache(geonameId, lat, lon, now)
+
+    return CommonResponse.of({
+      data: weatherData,
+      statusCode: HttpStatus.OK,
+    })
+  }
+
+  private async upsertWeatherCache(
+    geonameId: number,
+    lat: number,
+    lon: number,
+    now: Date
+  ): Promise<OpenMeteoWeatherResponse> {
     const weatherData = await this.openMeteoClient.fetchWeather(lat, lon)
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
     await this.postgresService
       .getDb()
@@ -181,7 +237,7 @@ export class CityService {
         weatherPayload: weatherData,
         active: true,
         lastRequestedAt: now,
-        expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        expiresAt,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -190,14 +246,11 @@ export class CityService {
           weatherPayload: weatherData,
           active: true,
           lastRequestedAt: now,
-          expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          expiresAt,
           updatedAt: now,
         },
       })
 
-    return CommonResponse.of({
-      data: weatherData,
-      statusCode: HttpStatus.OK,
-    })
+    return weatherData
   }
 }
