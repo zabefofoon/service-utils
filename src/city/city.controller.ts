@@ -5,6 +5,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
+  ApiServiceUnavailableResponse,
   ApiTags,
 } from "@nestjs/swagger"
 import { CityService } from "./city.service"
@@ -13,6 +14,46 @@ import { CityService } from "./city.service"
 @ApiTags("City")
 export class CityController {
   constructor(private readonly cityService: CityService) {}
+
+  @Get("weather")
+  @ApiOperation({
+    summary: "좌표 기반 날씨 조회",
+    description: "lat/lon 또는 geogeoname_id(또는 geoname_id)를 받아 날씨 데이터를 조회합니다.",
+  })
+  @ApiQuery({
+    name: "lat",
+    type: Number,
+    required: false,
+    description: "위도 (-90 ~ 90), geogeoname_id/geoname_id가 없을 때 필수",
+    example: 37.5445,
+  })
+  @ApiQuery({
+    name: "lon",
+    type: Number,
+    required: false,
+    description: "경도 (-180 ~ 180), geogeoname_id/geoname_id가 없을 때 필수",
+    example: 126.9837,
+  })
+  @ApiQuery({
+    name: "geoname_id",
+    type: Number,
+    required: false,
+    description: "geogeoname_id와 동일한 의미의 별칭",
+    example: 1835848,
+  })
+  @ApiOkResponse({ description: "날씨 조회 성공" })
+  @ApiBadRequestResponse({
+    description: "lat/lon 또는 geogeoname_id/geoname_id 파라미터가 유효하지 않은 경우",
+  })
+  @ApiNotFoundResponse({ description: "요청한 geoname_id의 날씨 캐시가 없는 경우" })
+  @ApiServiceUnavailableResponse({ description: "외부 날씨 API 호출 실패" })
+  findWeather(
+    @Query("lat", ParseFloatPipe) lat: number,
+    @Query("lon", ParseFloatPipe) lon: number,
+    @Query("geoname_id", new ParseFloatPipe({ optional: true })) geonameId?: number
+  ) {
+    return this.cityService.findWeather(lat, lon, geonameId)
+  }
 
   @Get("nearest")
   @ApiOperation({
