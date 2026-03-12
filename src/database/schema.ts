@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm"
 import {
   bigint,
   boolean,
+  customType,
   doublePrecision,
   integer,
   jsonb,
@@ -11,6 +12,12 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
+
+const geographyPoint = customType<{ data: string }>({
+  dataType() {
+    return "geography(Point,4326)"
+  },
+})
 
 export const boards = pgTable("board", {
   id: serial("id").primaryKey(),
@@ -46,6 +53,7 @@ export const cities = pgTable("city", {
   countryCode: text("country_code").notNull(),
   lat: doublePrecision("lat").notNull(),
   lon: doublePrecision("lon").notNull(),
+  geog: geographyPoint("geog"),
   timezone: text("timezone"),
 })
 
