@@ -63,3 +63,26 @@ export const cities = pgTable(
 )
 
 export type City = typeof cities.$inferSelect
+
+export const cityWeather = pgTable(
+  "city_weather",
+  {
+    geonameId: bigint("geoname_id", { mode: "number" })
+      .primaryKey()
+      .references(() => cities.geonameId, { onDelete: "cascade", onUpdate: "cascade" }),
+    weatherPayload: jsonb("weather_payload")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    active: boolean("active").notNull().default(false),
+    lastRequestedAt: timestamp("last_requested_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("city_weather_active_idx").on(t.active),
+    index("city_weather_expires_at_idx").on(t.expiresAt),
+  ]
+)
+
+export type CityWeather = typeof cityWeather.$inferSelect
