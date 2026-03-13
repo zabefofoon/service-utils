@@ -29,8 +29,7 @@ export class OpenMeteoClient {
     const query = new URLSearchParams({
       latitude: String(lat),
       longitude: String(lon),
-      hourly: "temperature_2m,rain,snowfall,showers",
-      current: "temperature_2m,rain,snowfall,showers,cloud_cover",
+      hourly: "temperature_2m,rain,snowfall,showers,cloud_cover",
       past_hours: "24",
       forecast_hours: "24",
       timezone: "auto",

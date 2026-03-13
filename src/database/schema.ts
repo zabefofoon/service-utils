@@ -59,10 +59,7 @@ export const cities = pgTable(
     geog: geographyPoint("geog"),
     timezone: text("timezone"),
   },
-  (t) => [
-    index("city_geog_gix").using("gist", t.geog),
-    index("city_lat_lon_idx").on(t.lat, t.lon),
-  ]
+  (t) => [index("city_geog_gix").using("gist", t.geog), index("city_lat_lon_idx").on(t.lat, t.lon)]
 )
 
 export type City = typeof cities.$inferSelect
