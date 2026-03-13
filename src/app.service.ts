@@ -22,6 +22,7 @@ export class AppService implements OnModuleInit, OnModuleDestroy {
   private isWorkerEnabled = false
 
   async onModuleInit() {
+    return // 테스트용으로 남겨두지만, 실제 사용은 안하므로 일단 꺼둠
     const connectionString = process.env.DATABASE_URL
 
     if (!connectionString) return

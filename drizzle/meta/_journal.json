@@ -43,6 +43,13 @@
       "when": 1773299055985,
       "tag": "0005_superb_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773368890190,
+      "tag": "0006_nice_newton_destine",
+      "breakpoints": true
     }
   ]
 }

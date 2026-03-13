@@ -59,7 +59,10 @@ export const cities = pgTable(
     geog: geographyPoint("geog"),
     timezone: text("timezone"),
   },
-  (t) => [index("city_geog_gix").using("gist", t.geog)]
+  (t) => [
+    index("city_geog_gix").using("gist", t.geog),
+    index("city_lat_lon_idx").on(t.lat, t.lon),
+  ]
 )
 
 export type City = typeof cities.$inferSelect
@@ -82,6 +85,7 @@ export const cityWeather = pgTable(
   (t) => [
     index("city_weather_active_idx").on(t.active),
     index("city_weather_expires_at_idx").on(t.expiresAt),
+    index("city_weather_last_requested_at_idx").on(t.lastRequestedAt),
   ]
 )
 
