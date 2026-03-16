@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common"
+import { Injectable, Logger } from "@nestjs/common"
 import { Cron } from "@nestjs/schedule"
 import dayjs from "dayjs"
 import { CityService } from "../city/city.service"
@@ -6,6 +6,8 @@ import { HolidayService } from "../holiday/holiday.service"
 
 @Injectable()
 export class CronService {
+  logger = new Logger("")
+
   constructor(
     private readonly holidayService: HolidayService,
     private readonly cityService: CityService
@@ -31,6 +33,7 @@ export class CronService {
   @Cron("0 0 */2 * *")
   handleEvery2Days() {
     this.cityService.updateCityWeatheres().catch(console.error)
+    this.logger.log("called updateCityWeatheres")
   }
 
   @Cron("0 0 * * 0")
