@@ -87,4 +87,13 @@ export class CityController {
   ) {
     return this.cityService.findNearest(lat, lon)
   }
+
+  @Get("weather/update")
+  @ApiOperation({
+    summary: "날씨 수동 업데이트",
+    description: "날씨를 수동으로 업데이트 합니다.",
+  })
+  updateCityWeathers() {
+    return this.cityService.updateCityWeatheres()
+  }
 }
