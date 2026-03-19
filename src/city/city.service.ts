@@ -1,7 +1,14 @@
-import { BadRequestException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common"
+import {
+  BadRequestException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common"
 import dayjs from "dayjs"
 import { and, eq, isNotNull, lt, sql } from "drizzle-orm"
 import { CommonResponse } from "../common/models/CommonResponse"
+import etcUtil from "../common/utils/etc.util"
 import zodUtils from "../common/utils/zod.utils"
 import { PostgresService } from "../database/postgres.service"
 import { cities, cityWeather } from "../database/schema"
@@ -15,6 +22,8 @@ import { NearestCity } from "./models/NearestCity"
 
 @Injectable()
 export class CityService {
+  private readonly logger = new Logger(CityService.name)
+
   constructor(
     private readonly postgresService: PostgresService,
     private readonly openMeteoClient: OpenMeteoClient
@@ -105,16 +114,7 @@ export class CityService {
   }
 
   async updateCityWeatheres(): Promise<CommonResponse<{ updated: number }>> {
-    const activeCityWeathers = await this.postgresService
-      .getDb()
-      .select({
-        geonameId: cityWeather.geonameId,
-        lat: cities.lat,
-        lon: cities.lon,
-      })
-      .from(cityWeather)
-      .innerJoin(cities, eq(cityWeather.geonameId, cities.geonameId))
-      .where(eq(cityWeather.active, true))
+    const activeCityWeathers = await this.loadActiveCityWeathers()
 
     let updated = 0
 
@@ -252,5 +252,48 @@ export class CityService {
       })
 
     return weatherData
+  }
+
+  private async loadActiveCityWeathers(): Promise<
+    Array<{ geonameId: number; lat: number; lon: number }>
+  > {
+    const maxAttempts = 3
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.postgresService
+          .getDb()
+          .select({
+            geonameId: cityWeather.geonameId,
+            lat: cities.lat,
+            lon: cities.lon,
+          })
+          .from(cityWeather)
+          .innerJoin(cities, eq(cityWeather.geonameId, cities.geonameId))
+          .where(eq(cityWeather.active, true))
+      } catch (error) {
+        if (!this.isRetryableConnectionError(error) || attempt === maxAttempts) throw error
+
+        this.logger.warn(
+          `Failed to load active city weather rows (attempt ${attempt}/${maxAttempts}). Retrying...`
+        )
+
+        await etcUtil.sleep(attempt * 1500)
+      }
+    }
+
+    return []
+  }
+
+  private isRetryableConnectionError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false
+
+    return [
+      "Connection terminated due to connection timeout",
+      "Connection terminated unexpectedly",
+      "timeout",
+      "ECONNRESET",
+      "ETIMEDOUT",
+    ].some((keyword) => error.message.includes(keyword))
   }
 }

@@ -2,6 +2,7 @@ import {
   HttpStatus,
   Injectable,
   InternalServerErrorException,
+  Logger,
   OnModuleDestroy,
   ServiceUnavailableException,
 } from "@nestjs/common"
@@ -12,6 +13,7 @@ import * as schema from "./schema"
 
 @Injectable()
 export class PostgresService implements OnModuleDestroy {
+  private readonly logger = new Logger(PostgresService.name)
   private readonly pool: Pool | null
   private readonly db: NodePgDatabase<typeof schema> | null
 
@@ -24,12 +26,21 @@ export class PostgresService implements OnModuleDestroy {
       return
     }
 
+    const max = Number(process.env.PG_POOL_MAX ?? 10)
+    const idleTimeoutMillis = Number(process.env.PG_IDLE_TIMEOUT_MS ?? 30000)
+    const connectionTimeoutMillis = Number(process.env.PG_CONNECTION_TIMEOUT_MS ?? 10000)
+
     this.pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      max: 10, // max_connections = 인스턴스 수 x 풀링갯수
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 3000,
+      max,
+      idleTimeoutMillis,
+      connectionTimeoutMillis,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+    })
+    this.pool.on("error", (error) => {
+      this.logger.error(`PostgreSQL pool error: ${error.message}`, error.stack)
     })
 
     this.db = drizzle(this.pool, { schema })
