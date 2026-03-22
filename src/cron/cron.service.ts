@@ -30,7 +30,7 @@ export class CronService {
     this.holidayService.deleteHoliday(dayjs().subtract(1, "year").get("year")).catch(console.error)
   }
 
-  @Cron("0 0 */2 * *")
+  @Cron("0 0 * * *")
   handleEvery2Days() {
     this.cityService.updateCityWeatheres().catch(console.error)
     this.logger.log("called updateCityWeatheres")
