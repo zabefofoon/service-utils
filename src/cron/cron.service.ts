@@ -31,7 +31,7 @@ export class CronService {
   }
 
   @Cron("0 0 * * *")
-  handleEvery2Days() {
+  handleEveryDays() {
     this.cityService.updateCityWeatheres().catch(console.error)
     this.logger.log("called updateCityWeatheres")
   }
