@@ -76,4 +76,24 @@ export class PostgresService implements OnModuleDestroy {
       throw new ServiceUnavailableException("PostgreSQL connection failed")
     }
   }
+
+  async warmUp(): Promise<void> {
+    if (!this.pool) throw new InternalServerErrorException("DATABASE_URL is not configured")
+
+    const maxAttempts = 3
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await this.pool.query("SELECT 1")
+        return
+      } catch (error) {
+        if (attempt === maxAttempts) throw error
+
+        const message = error instanceof Error ? error.message : String(error)
+        this.logger.warn(`PostgreSQL warm-up failed (attempt ${attempt}/${maxAttempts}): ${message}`)
+
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
+      }
+    }
+  }
 }
