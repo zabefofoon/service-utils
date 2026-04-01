@@ -90,7 +90,9 @@ export class PostgresService implements OnModuleDestroy {
         if (attempt === maxAttempts) throw error
 
         const message = error instanceof Error ? error.message : String(error)
-        this.logger.warn(`PostgreSQL warm-up failed (attempt ${attempt}/${maxAttempts}): ${message}`)
+        this.logger.warn(
+          `PostgreSQL warm-up failed (attempt ${attempt}/${maxAttempts}): ${message}`
+        )
 
         await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
       }
