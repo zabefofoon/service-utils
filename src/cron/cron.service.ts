@@ -15,13 +15,13 @@ export class CronService {
     private readonly postgresService: PostgresService
   ) {}
 
-  @Cron("0 4 1 * *")
+  @Cron("4 0 1 * *")
   async handleEvery1DayMonth() {
     await this.postgresService.warmUp()
     this.holidayService.saveHolidayFromGoogle(dayjs().get("year")).catch(console.error)
   }
 
-  @Cron("0 6 2 * *")
+  @Cron("6 0 2 * *")
   async handleEvery2DayMonth() {
     await this.postgresService.warmUp()
     this.holidayService
@@ -29,20 +29,20 @@ export class CronService {
       .catch(console.error)
   }
 
-  @Cron("0 8 3 */6 *")
+  @Cron("8 0 3 */6 *")
   async handleEvery3Day6Month() {
     await this.postgresService.warmUp()
     this.holidayService.deleteHoliday(dayjs().subtract(1, "year").get("year")).catch(console.error)
   }
 
-  @Cron("0 10 * * *")
+  @Cron("10 0 * * *")
   async handleEveryDays() {
     await this.postgresService.warmUp()
     this.cityService.updateCityWeatheres().catch(console.error)
     this.logger.log("called updateCityWeatheres")
   }
 
-  @Cron("0 12 * * 0")
+  @Cron("12 0 * * 0")
   async handleEveryWeek() {
     await this.postgresService.warmUp()
     this.cityService.removeUnusedCityWeather().catch(console.error)
